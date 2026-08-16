@@ -26,7 +26,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: environments
+        working-directory: Parent
 
     steps:
       # Checkout code
