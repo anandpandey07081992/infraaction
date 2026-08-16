@@ -1,81 +1,33 @@
-name: Terraform CI/CD
+name: Infra Deploy
 
 on:
   push:
     branches:
       - main
-      - develop
-      - 'feature/**'
-
-  pull_request:
-    branches:
-      - main
+    paths:
+      - 'environments/**'
+      - 'modules/**'
+      - '.github/workflows/infra.yml'
 
 permissions:
   contents: read
-
-env:
-  TF_VERSION: "1.9.8"
+  security-events: write
+  actions: write
 
 jobs:
-
-  # ============================================================
-  # 1. CODE SCAN
-  # ============================================================
-  # code-scan:
-  #   name: Code Scan
-  #   runs-on: ubuntu-latest
-
-  #   steps:
-  #     - name: Checkout Code
-  #       uses: actions/checkout@v4
-
-      # -----------------------------
-      # TFLint
-      # -----------------------------
-      # - name: Setup TFLint
-      #   uses: terraform-linters/setup-tflint@v4
-
-      # - name: Initialize TFLint
-      #   run: tflint --init
-
-      # - name: Run TFLint
-      #   run: tflint --recursive
-
-      # -----------------------------
-      # Trivy IaC Scan
-      # -----------------------------
-      # - name: Run Trivy IaC Scan
-      #   uses: aquasecurity/trivy-action@master
-      #   with:
-      #     scan-type: config
-      #     scan-ref: .
-      #     severity: HIGH,CRITICAL
-      #     exit-code: '1'
-
-
-  # ============================================================
-  # 2. TERRAFORM
-  # ============================================================
   terraform:
-    name: Terraform
     runs-on: ubuntu-latest
 
-    needs:
-      - code-scan
+    defaults:
+      run:
+        working-directory: environments
 
     steps:
-
-      # -----------------------------
-      # Checkout
-      # -----------------------------
-      - name: Checkout Code
+      # Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-
-      # -----------------------------
       # Azure Login
-      # -----------------------------
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -87,47 +39,84 @@ jobs:
               "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
             }
 
-
-      # -----------------------------
-      # Install Terraform
-      # -----------------------------
+      # Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.8
 
-
-      # -----------------------------
-      # Terraform Init
-      # -----------------------------
-      - name: Terraform Init
-        run: terraform init
-
-
-      # -----------------------------
       # Terraform Format Check
-      # -----------------------------
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
+      # Terraform Init
+      - name: Terraform Init
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: terraform init -input=false
 
-      # -----------------------------
       # Terraform Validate
-      # -----------------------------
       - name: Terraform Validate
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: terraform validate
 
+      # Security Scan - tfsec
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: environments
 
-      # -----------------------------
+      # Secret Scan - Gitleaks
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       # Terraform Plan
-      # -----------------------------
       - name: Terraform Plan
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: terraform plan -out=tfplan
 
-
-      # -----------------------------
       # Terraform Apply
-      # -----------------------------
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: terraform apply -auto-approve tfplan
+
+      # Capture VM Outputs
+      - name: Capture VM Outputs
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          VM_HOST=$(terraform output -json vm_public_ips | jq -r 'to_entries[0].value')
+          VM_USER=$(terraform output -json vm_admin_usernames | jq -r 'to_entries[0].value')
+
+          echo "VM_HOST=$VM_HOST" > vm.env
+          echo "VM_USER=$VM_USER" >> vm.env
+
+          echo "Captured VM Details:"
+          cat vm.env
+
+      # Upload artifact for next workflow
+      - name: Upload VM Info Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-info
+          path: environments/vm.env
