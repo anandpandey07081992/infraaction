@@ -4,11 +4,16 @@ on:
   push:
     branches:
       - main
-      - 'feature/**'
+      - develop
+      - "feature/**"
+
+  pull_request:
+    branches:
+      - main
     paths:
-      - 'environments/**'
-      - 'modules/**'
-      - '.github/workflows/infra.yml'
+      - "environments/**"
+      - "modules/**"
+      - ".github/workflows/infra.yml"
 
 permissions:
   contents: read
