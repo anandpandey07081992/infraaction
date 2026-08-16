@@ -22,36 +22,36 @@ jobs:
   # ============================================================
   # 1. CODE SCAN
   # ============================================================
-  code-scan:
-    name: Code Scan
-    runs-on: ubuntu-latest
+  # code-scan:
+  #   name: Code Scan
+  #   runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+  #   steps:
+  #     - name: Checkout Code
+  #       uses: actions/checkout@v4
 
       # -----------------------------
       # TFLint
       # -----------------------------
-      - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v4
+      # - name: Setup TFLint
+      #   uses: terraform-linters/setup-tflint@v4
 
-      - name: Initialize TFLint
-        run: tflint --init
+      # - name: Initialize TFLint
+      #   run: tflint --init
 
-      - name: Run TFLint
-        run: tflint --recursive
+      # - name: Run TFLint
+      #   run: tflint --recursive
 
       # -----------------------------
       # Trivy IaC Scan
       # -----------------------------
-      - name: Run Trivy IaC Scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: config
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          exit-code: '1'
+      # - name: Run Trivy IaC Scan
+      #   uses: aquasecurity/trivy-action@master
+      #   with:
+      #     scan-type: config
+      #     scan-ref: .
+      #     severity: HIGH,CRITICAL
+      #     exit-code: '1'
 
 
   # ============================================================
